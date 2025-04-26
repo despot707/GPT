@@ -1,6 +1,6 @@
 import os
 import asyncio
-import nextcord as discord
+import discord
 from src.log import logger
 
 from g4f.client import Client
