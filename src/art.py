@@ -3,30 +3,38 @@ from openai import AsyncOpenAI
 from g4f.client import AsyncClient
 from g4f.Provider import BingCreateImages, Gemini
 
-# initialize the official OpenAI client
+# Initialize the official OpenAI client
 openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_KEY"))
 
-async def draw(model: str, prompt: str) -> str:
+
+def get_image_provider(name: str):
+    return {
+        "Gemini": Gemini,
+        "BingCreateImages": BingCreateImages,
+    }.get(name, BingCreateImages)
+
+
+async def draw(model: str, prompt: str, size: str = "1024x1024", n: int = 1) -> str:
     """
-    Generate an image according to `model`:
-      • "dall-e-3", "dall-e-2", "gpt-image-1" → official OpenAI Images API
-      • "gemini"                         → free Gemini-Pro via g4f
-      • "bing"                          → free Bing Images via g4f
-    Returns the image URL.
+    Generate an image URL using either:
+      • OpenAI Images API (models: dall-e-3, dall-e-2, gpt-image-1) if OPENAI_ENABLED=True
+      • Free G4F providers (Gemini, BingCreateImages) otherwise
     """
-    # OFFICIAL OPENAI BRANCH
-    if os.getenv("OPENAI_ENABLED", "False") == "True" and model in ("dall-e-3", "dall-e-2", "gpt-image-1"):
+    use_official = os.getenv("OPENAI_ENABLED", "False").lower() == "true"
+    if use_official and model in ("dall-e-3", "dall-e-2", "gpt-image-1"):
         resp = await openai_client.images.generate(
             model=model,
             prompt=prompt,
-            size="1024x1024",  # or "1792x1024"
-            n=1,
+            n=n,
+            size=size,
         )
         return resp.data[0].url
 
-    # FREE G4F BRANCH
-    # pick the provider class
-    provider_cls = Gemini if model == "gemini" else BingCreateImages
-    g4f_client = AsyncClient(image_provider=provider_cls)
-    url = await g4f_client.images.generate(prompt=prompt)
-    return url
+    # fallback free provider
+    provider = get_image_provider(model)
+    client = AsyncClient(image_provider=provider)
+    result = await client.images.generate(prompt=prompt)
+    # g4f may return either a string or an object with .data[0].url
+    if hasattr(result, "data"):
+        return result.data[0].url
+    return result
